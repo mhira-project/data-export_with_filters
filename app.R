@@ -38,6 +38,7 @@ source("utility_functions/patientInfoTable.R")
 source("utility_functions/extract_cutoffs.R")
 source("utility_functions/groupCutoffs.R")
 source("utility_functions/printItemTable.R")
+source("utility_functions/split_patient_ids.R")
 
 inactivity = inactivity(timeoutSeconds)
 
@@ -207,18 +208,50 @@ server = function(input, output, session) {
   observe({
     req(!is_empty(patientIds()))
     req(!is_empty(session$userData))
-    print("get patient report via graphql")
+    print("Get patient report via GraphQL in batches")
     
-    response = getMultiplePatientReports(token = session$userData, patientIds = patientIds() %>% pull(id) %>% unique(), url = url)
+    all_patient_ids <- patientIds() %>% pull(id) %>% unique()
     
-    #  checkGraphqlResponse(response, session) # can close session
+    # Split patient IDs into smaller batches, e.g., 100 IDs per batch
+    batch_size <- 5
+    patient_id_batches <- split_patient_ids(all_patient_ids, batch_size)
     
-    response(response)
+    # Initialize an empty list to store the results
+    all_patient_data <- list()
     
-    print("data has been obtained from API")
+    for (batch in patient_id_batches) {
+      print(paste("Fetching data for batch of", length(batch), "patients"))
+      
+      batch_response <- tryCatch({
+        getMultiplePatientReports(token = session$userData, patientIds = batch, url = url)
+      }, warning = function(w) {
+        if (grepl("Session expired! Please login.", w$message)) {
+          showNotification("Session has expired! Please login again.", type = "error", duration = 20)
+          session$close()
+          return(NULL)  # Return NULL to indicate failure
+        }
+      }, error = function(e) {
+        showNotification("An error occurred while fetching patient IDs.", type = "error", duration = 20)
+        session$close()
+        return(NULL)  # Return NULL to indicate failure
+      })
+      
+      response_df <- simplifyMultPatRep(response = batch_response)
+      
+      if (!is.null(response_df)) {
+        all_patient_data <- append(all_patient_data, list(response_df))
+      }
+    }
     
-  }) %>%  bindEvent(patientIds())
-  
+    # Combine all the batch results into a single dataframe
+    combined_df <- bind_rows(all_patient_data)
+    
+    # Update the reactive value with the combined dataframe
+    response(combined_df)
+    
+  }) %>% bindEvent(patientIds())
+    
+
   
   
   # CALCULATE SCALES AND APPLY CUTOFFS -----------------------------------------  
@@ -230,8 +263,7 @@ server = function(input, output, session) {
     
     response = response()
     
-    # Simplify data and remove incomplete questionnaires
-    data = simplifyMultPatRep(response = response)
+    data = response
     
     # Terminate session if no completed data
     dataNotOkay = FALSE
