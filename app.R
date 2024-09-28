@@ -213,32 +213,42 @@ server = function(input, output, session) {
     all_patient_ids <- patientIds() %>% pull(id) %>% unique()
     
     # Split patient IDs into smaller batches, e.g., 100 IDs per batch
-    batch_size <- 5
-    patient_id_batches <- split_patient_ids(all_patient_ids, batch_size)
+    batch_size <- 100
+    patient_id_batches <- split_patient_ids(patientIds, batch_size)
     
     # Initialize an empty list to store the results
     all_patient_data <- list()
     
     for (batch in patient_id_batches) {
       print(paste("Fetching data for batch of", length(batch), "patients"))
+      print(batch)
       
       batch_response <- tryCatch({
-        getMultiplePatientReports(token = session$userData, patientIds = batch, url = url)
+        getMultiplePatientReports(token = token, patientIds = batch, url = url)
       }, warning = function(w) {
         if (grepl("Session expired! Please login.", w$message)) {
-          showNotification("Session has expired! Please login again.", type = "error", duration = 20)
-          session$close()
+           showNotification("Session has expired! Please login again.", type = "error", duration = 20)
+            session$close()
           return(NULL)  # Return NULL to indicate failure
         }
       }, error = function(e) {
-        showNotification("An error occurred while fetching patient IDs.", type = "error", duration = 20)
-        session$close()
+          showNotification("An error occurred while fetching patient IDs.", type = "error", duration = 20)
+          session$close()
         return(NULL)  # Return NULL to indicate failure
       })
       
-      response_df <- simplifyMultPatRep(response = batch_response)
+      if (is.null(batch_response$data$generateMultiplePatientReports) || length(batch_response$data$generateMultiplePatientReports) == 0) {next}
       
-      if (!is.null(response_df)) {
+      print(batch_response)
+      
+      if (exists("batch_response") && !is.null(batch_response)) {
+        response_df <- simplifyMultPatRep(response = batch_response)
+      }
+      
+      
+      
+      if (exists("response_df") && !is.null(response_df)) {
+        print(response_df)
         all_patient_data <- append(all_patient_data, list(response_df))
       }
     }
