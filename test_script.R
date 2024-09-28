@@ -20,6 +20,7 @@ source("utility_functions/extract_cutoffs.R")
 source("utility_functions/groupCutoffs.R")
 source("graphql_functions/getMultiplePatientReports.R")
 source("utility_functions/simplifyMultPatRep.R")
+source("utility_functions/split_patient_ids.R")
 
 #Setting
 
@@ -34,16 +35,60 @@ if(!file.exists("settings.R")){
 # LOAD DATA -------------------------------------------------------------------
 
 
-token = getToken(Username = "Userame", Password = "Password", url = url)
+token = getToken(Username = "user", Password = "password", url = url)
 
 Patients = getPatientIds(token = token, url = url)
 patientIds = Patients$id
 
 
-response = getMultiplePatientReports(token = token, patientIds = patientIds, url = url)
+
+# Split patient IDs into smaller batches, e.g., 100 IDs per batch
+batch_size <- 100
+patient_id_batches <- split_patient_ids(patientIds, batch_size)
+
+# Initialize an empty list to store the results
+all_patient_data <- list()
+
+for (batch in patient_id_batches) {
+  print(paste("Fetching data for batch of", length(batch), "patients"))
+  
+  batch_response <- tryCatch({
+    getMultiplePatientReports(token = token, patientIds = batch, url = url)
+  }, warning = function(w) {
+    if (grepl("Session expired! Please login.", w$message)) {
+     # showNotification("Session has expired! Please login again.", type = "error", duration = 20)
+    #  session$close()
+      return(NULL)  # Return NULL to indicate failure
+    }
+  }, error = function(e) {
+  #  showNotification("An error occurred while fetching patient IDs.", type = "error", duration = 20)
+  #  session$close()
+    return(NULL)  # Return NULL to indicate failure
+  })
+  
+  if (is.null(batch_response$data$generateMultiplePatientReports) || length(batch_response$data$generateMultiplePatientReports) == 0) {next}
+  
+ 
+  if (exists("batch_response") && !is.null(batch_response)) {
+  response_df <- simplifyMultPatRep(response = batch_response)
+  }
+  
+  
+  
+  if (exists("response_df") && !is.null(response_df)) {
+    all_patient_data <- append(all_patient_data, list(response_df))
+  }
+}
+
+# Combine all the batch results into a single dataframe
+combined_df <- bind_rows(all_patient_data)
 
 
-simplifiedData = simplifyMultPatRep(response)
+
+
+
+
+simplifiedData = combined_df
 data = simplifiedData
 
 questionnaireScripts = simplifiedData$questionnaireScripts %>% list_rbind() %>% unique
@@ -57,5 +102,4 @@ scales = calculateScales(
   questionnaireScripts =  questionnaireScripts)
 
 scales = applyCutOffs(scales = scales, cutoffs = cutoffs) 
-
 
