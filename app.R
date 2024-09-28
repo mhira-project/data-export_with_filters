@@ -214,7 +214,7 @@ server = function(input, output, session) {
     
     # Split patient IDs into smaller batches, e.g., 100 IDs per batch
     batch_size <- 100
-    patient_id_batches <- split_patient_ids(patientIds, batch_size)
+    patient_id_batches <- split_patient_ids(all_patient_ids, batch_size)
     
     # Initialize an empty list to store the results
     all_patient_data <- list()
@@ -224,7 +224,7 @@ server = function(input, output, session) {
       print(batch)
       
       batch_response <- tryCatch({
-        getMultiplePatientReports(token = token, patientIds = batch, url = url)
+        getMultiplePatientReports(token = session$userData, patientIds = batch, url = url)
       }, warning = function(w) {
         if (grepl("Session expired! Please login.", w$message)) {
            showNotification("Session has expired! Please login again.", type = "error", duration = 20)
@@ -239,10 +239,10 @@ server = function(input, output, session) {
       
       if (is.null(batch_response$data$generateMultiplePatientReports) || length(batch_response$data$generateMultiplePatientReports) == 0) {next}
       
-      print(batch_response)
-      
+
       if (exists("batch_response") && !is.null(batch_response)) {
         response_df <- simplifyMultPatRep(response = batch_response)
+        print(batch_response)
       }
       
       
