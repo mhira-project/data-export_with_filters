@@ -220,9 +220,7 @@ server = function(input, output, session) {
     all_patient_data <- list()
     
     for (batch in patient_id_batches) {
-      print(paste("Fetching data for batch of", length(batch), "patients"))
-      print(batch)
-      
+            
       batch_response <- tryCatch({
         getMultiplePatientReports(token = session$userData, patientIds = batch, url = url)
       }, warning = function(w) {
@@ -242,13 +240,11 @@ server = function(input, output, session) {
 
       if (exists("batch_response") && !is.null(batch_response)) {
         response_df <- simplifyMultPatRep(response = batch_response)
-        print(batch_response)
       }
       
       
       
       if (exists("response_df") && !is.null(response_df)) {
-        print(response_df)
         all_patient_data <- append(all_patient_data, list(response_df))
       }
     }
